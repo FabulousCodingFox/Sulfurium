@@ -27,6 +27,10 @@ class SubChunk {
         return this.voxels[x * 16 * 16 + y * 16 + z]
     }
 
+    generateMesh(){
+
+    }
+
     getMesh(): THREE.Mesh {
 
     }
@@ -71,5 +75,20 @@ class Chunk {
 
     generateMesh() {
         if (!this.isTerrainGenerated) { return }
+        for(let sc in this.subchunks ){
+            sc: SubChunk
+            sc.generateMesh()
+            sc.getMesh()
+        }
     }
+}
+
+let camera: THREE.PerspectiveCamera, scene: THREE.Scene;
+
+function init(){
+    camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 1, 20000 );
+    camera.position.y = 100
+
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color( 0xbfd1e5 );
 }
