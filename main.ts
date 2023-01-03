@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import * as NOISE from 'noisejs'
 import { Vector3 } from 'three';
 import { FirstPersonControls } from 'three/examples/jsm/controls/FirstPersonControls';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils';
@@ -75,30 +76,37 @@ class SubChunk {
         for (let x: number = 0; x < 16; x++) {
             for (let y: number = 0; y < 16; y++) {
                 for (let z: number = 0; z < 16; z++) {
-                    matrix.makeTranslation(
-                        x * 100 + this.chunk.x * 100 * 16,
-                        y * 100 + this.y * 100 * 16,
-                        z * 100 + this.chunk.z * 100 * 16
-                    );
-
                     let block = this.chunk.getBlockAtXYZ(x, y + 16 * this.y, z)
 
                     if (block == Block.GRASS) {
-                        geometries.push(pxGeometry.clone().applyMatrix4(matrix));
-                        geometries.push(nxGeometry.clone().applyMatrix4(matrix));
-                        geometries.push(pyGeometry.clone().applyMatrix4(matrix));
-                        geometries.push(nyGeometry.clone().applyMatrix4(matrix));
-                        geometries.push(pzGeometry.clone().applyMatrix4(matrix));
-                        geometries.push(nzGeometry.clone().applyMatrix4(matrix));
+                        matrix.makeTranslation(
+                            x * 100 + this.chunk.x * 100 * 16,
+                            y * 100 + this.y * 100 * 16,
+                            z * 100 + this.chunk.z * 100 * 16
+                        );
+
+                        if(this.chunk.getNeigbourBlockAtXYZ(x+1, y+this.y*16, z) == Block.AIR) geometries.push(pxGeometry.clone().applyMatrix4(matrix));
+                        if(this.chunk.getNeigbourBlockAtXYZ(x-1, y+this.y*16, z) == Block.AIR) geometries.push(nxGeometry.clone().applyMatrix4(matrix));
+                        if(this.chunk.getNeigbourBlockAtXYZ(x, y+this.y*16+1, z) == Block.AIR) geometries.push(pyGeometry.clone().applyMatrix4(matrix));
+                        if(this.chunk.getNeigbourBlockAtXYZ(x, y+this.y*16-1, z) == Block.AIR) geometries.push(nyGeometry.clone().applyMatrix4(matrix));
+                        if(this.chunk.getNeigbourBlockAtXYZ(x, y+this.y*16, z+1) == Block.AIR) geometries.push(pzGeometry.clone().applyMatrix4(matrix));
+                        if(this.chunk.getNeigbourBlockAtXYZ(x, y+this.y*16, z-1) == Block.AIR) geometries.push(nzGeometry.clone().applyMatrix4(matrix));
                     }
                 }
             }
         }
 
-        const geometry = BufferGeometryUtils.mergeBufferGeometries(geometries);
-        geometry.computeBoundingSphere();
+        console.log(geometries)
 
-        this.mesh = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ map: atlas, side: THREE.DoubleSide }));
+        if(geometries.length != 0){
+            const geometry = BufferGeometryUtils.mergeBufferGeometries(geometries);
+            geometry.computeBoundingSphere();
+            if(this.mesh != null) scene.remove(this.mesh)
+            this.mesh = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ map: atlas, side: THREE.DoubleSide }));
+            scene.add(this.mesh)
+        }else{
+            this.mesh = null
+        }
     }
 
     getMesh(): THREE.Mesh | null {
@@ -106,16 +114,19 @@ class SubChunk {
     }
 
     destroy(){
-
+        if(this.mesh != null){
+            scene.remove(this.mesh)
+            this.mesh.remove()
+        }
     }
 }
 
-class Chunk {
+export class Chunk {
     x: number
     z: number
     isTerrainGenerated: boolean
     subchunks: Array<SubChunk>
-    neighbors: Array<Chunk> | null
+    neighbors: Array<Chunk>
 
     constructor(x: number, z: number) {
         this.x = x
@@ -125,7 +136,7 @@ class Chunk {
         for (let i: number = 0; i < 16; i++) {
             this.subchunks[i] = new SubChunk(i, this)
         }
-        this.neighbors = null
+        this.neighbors = new Array(8)
     }
 
     setBlockAtXYZ(x: number, y: number, z: number, v: Block) {
@@ -138,12 +149,49 @@ class Chunk {
         return this.subchunks[Math.floor(y / 16)].getCubeAtXYZ(x, y - 16 * Math.floor(y / 16), z)
     }
 
+    getNeigbourBlockAtXYZ(x: number, y: number, z: number): Block{
+        if(y < 0) return Block.STONE
+        if(y >= 256) return Block.AIR
+
+        if(x >= 0 && x < 16 && z >= 0 && z < 16)
+            return this.getBlockAtXYZ(x, y, z);
+
+        if(x < 0 && z < 0)
+            return this.neighbors[0].getBlockAtXYZ(x+16, y, z+16); // If in CHunk "c0": x<0 && z<0
+
+        if(x >= 0 && x < 16 && z < 0)
+            return this.neighbors[1].getBlockAtXYZ(x, y, z+16); // If in CHunk "c1": 0>=x<16 && z<0
+
+        if(x >= 16 && z < 0)
+            return this.neighbors[2].getBlockAtXYZ(x-16, y, z+16); // If in CHunk "c2": x>=16 && z<0
+
+        if(x < 0 && z >= 0 && z < 16)
+            return this.neighbors[3].getBlockAtXYZ(x+16, y, z); // If in CHunk "c3": x<0 && 0>=z<16
+
+        if(x >= 16 && z >= 0 && z < 16)
+            return this.neighbors[4].getBlockAtXYZ(x-16, y, z); // If in CHunk "c4": x>=16 && 0>=z<16
+
+        if(x < 0 && z >= 16)
+            return this.neighbors[5].getBlockAtXYZ(x+16, y, z-16); // If in CHunk "c5"
+
+        if(x >= 0 && x < 16 && z >= 16)
+            return this.neighbors[6].getBlockAtXYZ(x, y, z-16); // If in CHunk "c6"
+
+        if(x >= 16 && z >= 16)
+            return this.neighbors[7].getBlockAtXYZ(x-16, y, z-16); // If in CHunk "c7"
+        
+        return Block.AIR
+    }
+
     generateTerrain() {
         for (let x: number = 0; x < 16; x++) {
             for (let y: number = 0; y < 256; y++) {
                 for (let z: number = 0; z < 16; z++) {
-
-                    this.setBlockAtXYZ(x, y, z, Math.random() < 0.6 ? Block.GRASS : Block.AIR)
+                    let height = Math.abs(noise.perlin2(
+                        (x + (this.x * 16)) / 30,
+                        (z + (this.z * 16)) / 30)
+                    ) * 20 + 90
+                    this.setBlockAtXYZ(x, y, z, y < height ? Block.GRASS : Block.AIR)
                 }
             }
         }
@@ -155,21 +203,26 @@ class Chunk {
         for (let scn = 0; scn < this.subchunks.length; scn++) {
             let sc = this.subchunks[scn]
             sc.generateMesh()
-            scene.add(sc.getMesh())
         }
     }
 
     destroy(){
-        this.neighbors = []
+        this.neighbors = new Array(8)
+
         for (let scn = 0; scn < this.subchunks.length; scn++) {
             this.subchunks[scn].destroy()
+            if(this.subchunks[scn].getMesh() != null) {scene.remove(this.subchunks[scn].getMesh())}
         }
         this.subchunks = []
-    }
-}
 
-function executeAsync(func: Function) {
-    setTimeout(func, 0);
+        for(let a=0; a<chunks.length; a++){
+            for(let b=0; b<chunks[a].neighbors.length; b++){
+                if(chunks[a].neighbors[b].x == this.x && chunks[a].neighbors[b].z == this.z){
+                    chunks[a].neighbors[b] = null
+                }
+            }
+        }
+    }
 }
 
 let camera: THREE.PerspectiveCamera
@@ -182,11 +235,13 @@ let atlas: THREE.Texture;
 let container: HTMLElement | null;
 
 let chunks: Chunk[]
-let chunksToDestroy: Chunk[]
 
 let playerPosition: Vector3
+let prevPlayerPosition: Vector3
 
-let renderDistance = 1
+let renderDistance = 2
+
+let noise = new NOISE.Noise(Math.random());
 
 function init() {
     container = document.getElementById("container")
@@ -194,7 +249,7 @@ function init() {
     clock = new THREE.Clock();
 
     camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 1, 20000);
-    camera.position.y = 100
+    camera.position.y = 100 * 100
 
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0xbfd1e5);
@@ -222,12 +277,15 @@ function init() {
     window.addEventListener('resize', onWindowResize);
 
     chunks = []
-    chunksToDestroy = []
 
-    const axesHelper = new THREE.AxesHelper(5);
-    scene.add(axesHelper);
+    playerPosition = camera.position
+    prevPlayerPosition = camera.position.clone()
 
-    executeAsync(updateChunks)
+    /*let cMain = new Chunk(0, 0)
+    cMain.generateTerrain()
+    cMain.generateMesh()*/
+
+    updateChunks()
 
     animate();
 }
@@ -240,8 +298,10 @@ function onWindowResize() {
 }
 
 function animate() {
-    for(let i=0;i<chunksToDestroy.length;i++){chunksToDestroy[i].destroy()}
-    chunksToDestroy = []
+    if(Math.floor(playerPosition.x / 16) != Math.floor(prevPlayerPosition.x / 16) || Math.floor(playerPosition.z / 16) != Math.floor(prevPlayerPosition.z / 16)){
+        updateChunks()
+    }
+    prevPlayerPosition = playerPosition.clone()
 
     requestAnimationFrame(animate);
     render();
@@ -264,7 +324,7 @@ function updateChunks() {
         let c = chunks[i]
         if(c.x > x + renderDistance + 1 || c.x < x - renderDistance - 1 ||
            c.z > z + renderDistance + 1 || c.z < z - renderDistance - 1 ){
-            chunksToDestroy.push(c)
+            c.destroy()
         }else{
             newC.push(c)
         }
@@ -306,7 +366,7 @@ function updateChunks() {
                 if(s.x==c.x+1 && s.z==c.z+1){ sides++;neighbors[7] = s; }
             }
             c.neighbors = neighbors
-            if(sides == 8) {
+            if(sides >= 8) {
                 chunksToGenerate.push(c);
             }
         }
@@ -316,7 +376,7 @@ function updateChunks() {
     chunksToGenerate.sort(function(a, b){
         let valueA = Math.sqrt(Math.pow(a.x - x, 2) + Math.pow(a.z - z, 2));
         let valueB = Math.sqrt(Math.pow(b.x - x, 2) + Math.pow(b.z - z, 2));
-        return valueA - valueB
+        return valueB - valueA
     })
 
     //Generate Chunks
@@ -331,16 +391,7 @@ function updateChunks() {
         if(!c.neighbors[5].isTerrainGenerated){ c.neighbors[5].generateTerrain();}
         if(!c.neighbors[6].isTerrainGenerated){ c.neighbors[6].generateTerrain();}
         if(!c.neighbors[7].isTerrainGenerated){ c.neighbors[7].generateTerrain();}
-        c.generateMesh(
-            c.neighbors[0],
-            c.neighbors[1],
-            c.neighbors[2],
-            c.neighbors[3],
-            c.neighbors[4],
-            c.neighbors[5],
-            c.neighbors[6],
-            c.neighbors[7]
-        );
+        c.generateMesh();
     }
 
 }
