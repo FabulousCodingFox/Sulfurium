@@ -104,6 +104,10 @@ class SubChunk {
     getMesh(): THREE.Mesh | null {
         return this.mesh
     }
+
+    destroy(){
+
+    }
 }
 
 class Chunk {
@@ -111,6 +115,7 @@ class Chunk {
     z: number
     isTerrainGenerated: boolean
     subchunks: Array<SubChunk>
+    neighbors: Array<Chunk> | null
 
     constructor(x: number, z: number) {
         this.x = x
@@ -120,6 +125,7 @@ class Chunk {
         for (let i: number = 0; i < 16; i++) {
             this.subchunks[i] = new SubChunk(i, this)
         }
+        this.neighbors = null
     }
 
     setBlockAtXYZ(x: number, y: number, z: number, v: Block) {
@@ -152,6 +158,18 @@ class Chunk {
             scene.add(sc.getMesh())
         }
     }
+
+    destroy(){
+        this.neighbors = []
+        for (let scn = 0; scn < this.subchunks.length; scn++) {
+            this.subchunks[scn].destroy()
+        }
+        this.subchunks = []
+    }
+}
+
+function executeAsync(func: Function) {
+    setTimeout(func, 0);
 }
 
 let camera: THREE.PerspectiveCamera
@@ -164,12 +182,11 @@ let atlas: THREE.Texture;
 let container: HTMLElement | null;
 
 let chunks: Chunk[]
-let chunksToRender: Chunk[]
 let chunksToDestroy: Chunk[]
 
 let playerPosition: Vector3
 
-let renderDistance = 6
+let renderDistance = 1
 
 function init() {
     container = document.getElementById("container")
@@ -190,10 +207,6 @@ function init() {
     const ambientLight = new THREE.AmbientLight(0xcccccc);
     scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
-    directionalLight.position.set(1, 1, 0.5).normalize();
-    scene.add(directionalLight);
-
     renderer = new THREE.WebGLRenderer({
         antialias: true,
         canvas: document.querySelector("#container")
@@ -208,12 +221,13 @@ function init() {
 
     window.addEventListener('resize', onWindowResize);
 
-    let mainChunk = new Chunk(0, 0);
-    mainChunk.generateTerrain()
-    mainChunk.generateMesh()
+    chunks = []
+    chunksToDestroy = []
 
     const axesHelper = new THREE.AxesHelper(5);
     scene.add(axesHelper);
+
+    executeAsync(updateChunks)
 
     animate();
 }
@@ -226,6 +240,9 @@ function onWindowResize() {
 }
 
 function animate() {
+    for(let i=0;i<chunksToDestroy.length;i++){chunksToDestroy[i].destroy()}
+    chunksToDestroy = []
+
     requestAnimationFrame(animate);
     render();
 }
@@ -277,9 +294,53 @@ function updateChunks() {
             let neighbors: Array<Chunk> = new Array(8)
             for(let j=0; j<chunks.length; j++){
                 let s = chunks[j]
+                if(s.x==c.x-1 && s.z==c.z-1){ sides++;neighbors[0] = s; }
+                if(s.x==c.x && s.z==c.z-1){ sides++;neighbors[1] = s; }
+                if(s.x==c.x+1 && s.z==c.z-1){ sides++;neighbors[2] = s; }
 
+                if(s.x==c.x-1 && s.z==c.z){ sides++;neighbors[3] = s; }
+                if(s.x==c.x+1 && s.z==c.z){ sides++;neighbors[4] = s; }
+
+                if(s.x==c.x-1 && s.z==c.z+1){ sides++;neighbors[5] = s; }
+                if(s.x==c.x && s.z==c.z+1){ sides++;neighbors[6] = s; }
+                if(s.x==c.x+1 && s.z==c.z+1){ sides++;neighbors[7] = s; }
+            }
+            c.neighbors = neighbors
+            if(sides == 8) {
+                chunksToGenerate.push(c);
             }
         }
+    }
+
+    //Sort chunks by distance
+    chunksToGenerate.sort(function(a, b){
+        let valueA = Math.sqrt(Math.pow(a.x - x, 2) + Math.pow(a.z - z, 2));
+        let valueB = Math.sqrt(Math.pow(b.x - x, 2) + Math.pow(b.z - z, 2));
+        return valueA - valueB
+    })
+
+    //Generate Chunks
+    for(let i=0; i<chunksToGenerate.length; i++){
+        let c = chunksToGenerate[i]
+        if(!c.isTerrainGenerated) c.generateTerrain();
+        if(!c.neighbors[0].isTerrainGenerated){ c.neighbors[0].generateTerrain();}
+        if(!c.neighbors[1].isTerrainGenerated){ c.neighbors[1].generateTerrain();}
+        if(!c.neighbors[2].isTerrainGenerated){ c.neighbors[2].generateTerrain();}
+        if(!c.neighbors[3].isTerrainGenerated){ c.neighbors[3].generateTerrain();}
+        if(!c.neighbors[4].isTerrainGenerated){ c.neighbors[4].generateTerrain();}
+        if(!c.neighbors[5].isTerrainGenerated){ c.neighbors[5].generateTerrain();}
+        if(!c.neighbors[6].isTerrainGenerated){ c.neighbors[6].generateTerrain();}
+        if(!c.neighbors[7].isTerrainGenerated){ c.neighbors[7].generateTerrain();}
+        c.generateMesh(
+            c.neighbors[0],
+            c.neighbors[1],
+            c.neighbors[2],
+            c.neighbors[3],
+            c.neighbors[4],
+            c.neighbors[5],
+            c.neighbors[6],
+            c.neighbors[7]
+        );
     }
 
 }
