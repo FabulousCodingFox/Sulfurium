@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Vector3 } from 'three';
 import { FirstPersonControls } from 'three/examples/jsm/controls/FirstPersonControls';
 import * as BufferGeometryUtils from 'three/examples/jsm/utils/BufferGeometryUtils';
 
@@ -162,6 +163,14 @@ let matrix: THREE.Matrix4;
 let atlas: THREE.Texture;
 let container: HTMLElement | null;
 
+let chunks: Chunk[]
+let chunksToRender: Chunk[]
+let chunksToDestroy: Chunk[]
+
+let playerPosition: Vector3
+
+let renderDistance = 6
+
 function init() {
     container = document.getElementById("container")
 
@@ -223,7 +232,56 @@ function animate() {
 
 function render() {
     controls.update(clock.getDelta());
+    playerPosition = camera.position
     renderer.render(scene, camera)
+}
+
+function updateChunks() {
+    // Get the players position
+    let x = Math.floor(playerPosition.x / 16)
+    let z = Math.floor(playerPosition.z / 16)
+
+    // Remove all chunks outside the render distance
+    let newC = []
+    for(let i=0; i<chunks.length; i++){
+        let c = chunks[i]
+        if(c.x > x + renderDistance + 1 || c.x < x - renderDistance - 1 ||
+           c.z > z + renderDistance + 1 || c.z < z - renderDistance - 1 ){
+            chunksToDestroy.push(c)
+        }else{
+            newC.push(c)
+        }
+    }
+
+    // Adding chunks to the list that are within the render distance
+    for(let i = x- renderDistance; i <= x + renderDistance; i++){
+        for(let j = z- renderDistance; j <= z + renderDistance; j++){
+            let exists = false
+            for(let i=0; i<chunks.length; i++){
+                if(chunks[i].x == i && chunks[i].z == j){
+                    exists = true
+                }
+            }
+            if(!exists){
+                newC.push(new Chunk(i, j))
+            }
+        }
+    }
+    chunks = newC
+
+    let chunksToGenerate = []
+    for(let i=0; i<chunks.length; i++){
+        let c = chunks[i]
+        if(!c.isTerrainGenerated){
+            let sides: number = 0
+            let neighbors: Array<Chunk> = new Array(8)
+            for(let j=0; j<chunks.length; j++){
+                let s = chunks[j]
+
+            }
+        }
+    }
+
 }
 
 init()
