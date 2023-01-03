@@ -96,8 +96,6 @@ class SubChunk {
             }
         }
 
-        console.log(geometries)
-
         if(geometries.length != 0){
             const geometry = BufferGeometryUtils.mergeBufferGeometries(geometries);
             geometry.computeBoundingSphere();
@@ -357,10 +355,8 @@ function updateChunks() {
                 if(s.x==c.x-1 && s.z==c.z-1){ sides++;neighbors[0] = s; }
                 if(s.x==c.x && s.z==c.z-1){ sides++;neighbors[1] = s; }
                 if(s.x==c.x+1 && s.z==c.z-1){ sides++;neighbors[2] = s; }
-
                 if(s.x==c.x-1 && s.z==c.z){ sides++;neighbors[3] = s; }
                 if(s.x==c.x+1 && s.z==c.z){ sides++;neighbors[4] = s; }
-
                 if(s.x==c.x-1 && s.z==c.z+1){ sides++;neighbors[5] = s; }
                 if(s.x==c.x && s.z==c.z+1){ sides++;neighbors[6] = s; }
                 if(s.x==c.x+1 && s.z==c.z+1){ sides++;neighbors[7] = s; }
@@ -382,6 +378,7 @@ function updateChunks() {
     //Generate Chunks
     for(let i=0; i<chunksToGenerate.length; i++){
         let c = chunksToGenerate[i]
+        console.log(c.neighbors)
         if(!c.isTerrainGenerated) c.generateTerrain();
         if(!c.neighbors[0].isTerrainGenerated){ c.neighbors[0].generateTerrain();}
         if(!c.neighbors[1].isTerrainGenerated){ c.neighbors[1].generateTerrain();}
