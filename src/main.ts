@@ -178,7 +178,7 @@ function init() {
 
     matrix = new THREE.Matrix4();
 
-    atlas = new THREE.TextureLoader().load('textures/minecraft/atlas.png');
+    atlas = new THREE.TextureLoader().load('../public/atlas.png');
     atlas.magFilter = THREE.NearestFilter;
 
     const ambientLight = new THREE.AmbientLight(0xcccccc);
@@ -203,6 +203,9 @@ function init() {
     let mainChunk = new Chunk(0, 0);
     mainChunk.generateTerrain()
     mainChunk.generateMesh()
+
+    const axesHelper = new THREE.AxesHelper( 5 );
+    scene.add( axesHelper );
 }
 
 function onWindowResize() {
