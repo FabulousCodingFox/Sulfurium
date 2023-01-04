@@ -124,7 +124,6 @@ export class Chunk {
     z: number
     isTerrainGenerated: boolean
     subchunks: Array<SubChunk>
-    neighbors: Array<Chunk>
 
     constructor(x: number, z: number) {
         this.x = x
@@ -134,7 +133,13 @@ export class Chunk {
         for (let i: number = 0; i < 16; i++) {
             this.subchunks[i] = new SubChunk(i, this)
         }
-        this.neighbors = new Array(8)
+    }
+
+    getNeighbour(px: number, pz: number): Chunk | null{
+        for(let i=0;i<chunks.length;i++){
+            if(this.x + px == chunks[i].x && this.z + pz == chunks[i].z) return chunks[i]
+        }
+        return null
     }
 
     setBlockAtXYZ(x: number, y: number, z: number, v: Block) {
@@ -154,29 +159,14 @@ export class Chunk {
         if(x >= 0 && x < 16 && z >= 0 && z < 16)
             return this.getBlockAtXYZ(x, y, z);
 
-        if(x < 0 && z < 0)
-            return this.neighbors[0].getBlockAtXYZ(x+16, y, z+16); // If in CHunk "c0": x<0 && z<0
-
-        if(x >= 0 && x < 16 && z < 0)
-            return this.neighbors[1].getBlockAtXYZ(x, y, z+16); // If in CHunk "c1": 0>=x<16 && z<0
-
-        if(x >= 16 && z < 0)
-            return this.neighbors[2].getBlockAtXYZ(x-16, y, z+16); // If in CHunk "c2": x>=16 && z<0
-
-        if(x < 0 && z >= 0 && z < 16)
-            return this.neighbors[3].getBlockAtXYZ(x+16, y, z); // If in CHunk "c3": x<0 && 0>=z<16
-
-        if(x >= 16 && z >= 0 && z < 16)
-            return this.neighbors[4].getBlockAtXYZ(x-16, y, z); // If in CHunk "c4": x>=16 && 0>=z<16
-
-        if(x < 0 && z >= 16)
-            return this.neighbors[5].getBlockAtXYZ(x+16, y, z-16); // If in CHunk "c5"
-
-        if(x >= 0 && x < 16 && z >= 16)
-            return this.neighbors[6].getBlockAtXYZ(x, y, z-16); // If in CHunk "c6"
-
-        if(x >= 16 && z >= 16)
-            return this.neighbors[7].getBlockAtXYZ(x-16, y, z-16); // If in CHunk "c7"
+        if(x < 0 && z < 0)return this.getNeighbour(-1, -1).getBlockAtXYZ(x+16, y, z+16); // If in CHunk "c0": x<0 && z<0
+        if(x >= 0 && x < 16 && z < 0)return this.getNeighbour(0, -1).getBlockAtXYZ(x, y, z+16); // If in CHunk "c1": 0>=x<16 && z<0
+        if(x >= 16 && z < 0)return this.getNeighbour(1, -1).getBlockAtXYZ(x-16, y, z+16); // If in CHunk "c2": x>=16 && z<0
+        if(x < 0 && z >= 0 && z < 16)return this.getNeighbour(-1, 0).getBlockAtXYZ(x+16, y, z); // If in CHunk "c3": x<0 && 0>=z<16
+        if(x >= 16 && z >= 0 && z < 16)return this.getNeighbour(1, 0).getBlockAtXYZ(x-16, y, z); // If in CHunk "c4": x>=16 && 0>=z<16
+        if(x < 0 && z >= 16)return this.getNeighbour(-1, 1).getBlockAtXYZ(x+16, y, z-16); // If in CHunk "c5"
+        if(x >= 0 && x < 16 && z >= 16)return this.getNeighbour(0, 1).getBlockAtXYZ(x, y, z-16); // If in CHunk "c6"
+        if(x >= 16 && z >= 16)return this.getNeighbour(1, 1).getBlockAtXYZ(x-16, y, z-16); // If in CHunk "c7"
         
         return Block.AIR
     }
@@ -205,21 +195,10 @@ export class Chunk {
     }
 
     destroy(){
-        this.neighbors = new Array(8)
-
         for (let scn = 0; scn < this.subchunks.length; scn++) {
             this.subchunks[scn].destroy()
-            if(this.subchunks[scn].getMesh() != null) {scene.remove(this.subchunks[scn].getMesh())}
         }
         this.subchunks = []
-
-        for(let a=0; a<chunks.length; a++){
-            for(let b=0; b<chunks[a].neighbors.length; b++){
-                if(chunks[a].neighbors[b].x == this.x && chunks[a].neighbors[b].z == this.z){
-                    chunks[a].neighbors[b] = null
-                }
-            }
-        }
     }
 }
 
@@ -329,8 +308,8 @@ function updateChunks() {
     }
 
     // Adding chunks to the list that are within the render distance
-    for(let i = x- renderDistance; i <= x + renderDistance; i++){
-        for(let j = z- renderDistance; j <= z + renderDistance; j++){
+    for(let i = x - renderDistance - 1; i <= x + renderDistance + 1; i++){
+        for(let j = z - renderDistance - 1; j <= z + renderDistance + 1; j++){
             let exists = false
             for(let i=0; i<chunks.length; i++){
                 if(chunks[i].x == i && chunks[i].z == j){
@@ -349,19 +328,17 @@ function updateChunks() {
         let c = chunks[i]
         if(!c.isTerrainGenerated){
             let sides: number = 0
-            let neighbors: Array<Chunk> = new Array(8)
             for(let j=0; j<chunks.length; j++){
                 let s = chunks[j]
-                if(s.x==c.x-1 && s.z==c.z-1){ sides++;neighbors[0] = s; }
-                if(s.x==c.x && s.z==c.z-1){ sides++;neighbors[1] = s; }
-                if(s.x==c.x+1 && s.z==c.z-1){ sides++;neighbors[2] = s; }
-                if(s.x==c.x-1 && s.z==c.z){ sides++;neighbors[3] = s; }
-                if(s.x==c.x+1 && s.z==c.z){ sides++;neighbors[4] = s; }
-                if(s.x==c.x-1 && s.z==c.z+1){ sides++;neighbors[5] = s; }
-                if(s.x==c.x && s.z==c.z+1){ sides++;neighbors[6] = s; }
-                if(s.x==c.x+1 && s.z==c.z+1){ sides++;neighbors[7] = s; }
+                if(s.x==c.x-1 && s.z==c.z-1){ sides++; }
+                if(s.x==c.x   && s.z==c.z-1){ sides++; }
+                if(s.x==c.x+1 && s.z==c.z-1){ sides++; }
+                if(s.x==c.x-1 && s.z==c.z)  { sides++; }
+                if(s.x==c.x+1 && s.z==c.z)  { sides++; }
+                if(s.x==c.x-1 && s.z==c.z+1){ sides++; }
+                if(s.x==c.x   && s.z==c.z+1){ sides++; }
+                if(s.x==c.x+1 && s.z==c.z+1){ sides++; }
             }
-            c.neighbors = neighbors
             if(sides >= 8) {
                 chunksToGenerate.push(c);
             }
@@ -375,22 +352,22 @@ function updateChunks() {
         return valueB - valueA
     })
 
+    console.log(chunksToGenerate.length)
+
     //Generate Chunks
     for(let i=0; i<chunksToGenerate.length; i++){
         let c = chunksToGenerate[i]
-        console.log(c.neighbors)
         if(!c.isTerrainGenerated) c.generateTerrain();
-        if(!c.neighbors[0].isTerrainGenerated){ c.neighbors[0].generateTerrain();}
-        if(!c.neighbors[1].isTerrainGenerated){ c.neighbors[1].generateTerrain();}
-        if(!c.neighbors[2].isTerrainGenerated){ c.neighbors[2].generateTerrain();}
-        if(!c.neighbors[3].isTerrainGenerated){ c.neighbors[3].generateTerrain();}
-        if(!c.neighbors[4].isTerrainGenerated){ c.neighbors[4].generateTerrain();}
-        if(!c.neighbors[5].isTerrainGenerated){ c.neighbors[5].generateTerrain();}
-        if(!c.neighbors[6].isTerrainGenerated){ c.neighbors[6].generateTerrain();}
-        if(!c.neighbors[7].isTerrainGenerated){ c.neighbors[7].generateTerrain();}
+        if(!c.getNeighbour(-1, -1).isTerrainGenerated){ c.getNeighbour(-1, -1).generateTerrain();}
+        if(!c.getNeighbour(0, -1).isTerrainGenerated) { c.getNeighbour(0, -1).generateTerrain();}
+        if(!c.getNeighbour(1, -1).isTerrainGenerated) { c.getNeighbour(1, -1).generateTerrain();}
+        if(!c.getNeighbour(-1, 0).isTerrainGenerated) { c.getNeighbour(-1, 0).generateTerrain();}
+        if(!c.getNeighbour(1, 0).isTerrainGenerated)  { c.getNeighbour(1, 0).generateTerrain();}
+        if(!c.getNeighbour(-1, 1).isTerrainGenerated) { c.getNeighbour(-1, 1).generateTerrain();}
+        if(!c.getNeighbour(0, 1).isTerrainGenerated)  { c.getNeighbour(0, 1).generateTerrain();}
+        if(!c.getNeighbour(1, 1).isTerrainGenerated)  { c.getNeighbour(1, 1).generateTerrain();}
         c.generateMesh();
     }
-
 }
 
 init()
