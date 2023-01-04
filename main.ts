@@ -35,7 +35,7 @@ class SubChunk {
         return this.voxels[x * 16 * 16 + y * 16 + z]
     }
 
-    generateMesh() {
+    async generateMesh() {
         let pxGeometry = new THREE.PlaneGeometry(100, 100);
         pxGeometry.attributes.uv.array[1] = 0.5;
         pxGeometry.attributes.uv.array[3] = 0.5;
@@ -101,7 +101,7 @@ class SubChunk {
             geometry.computeBoundingSphere();
             if(this.mesh != null) scene.remove(this.mesh)
             this.mesh = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ map: atlas, side: THREE.DoubleSide }));
-            scene.add(this.mesh)
+            await scene.add(this.mesh)
         }else{
             this.mesh = null
         }
@@ -111,10 +111,10 @@ class SubChunk {
         return this.mesh
     }
 
-    destroy(){
+    async destroy(){
         if(this.mesh != null){
-            scene.remove(this.mesh)
-            this.mesh.remove()
+            await scene.remove(this.mesh)
+            await this.mesh.remove()
         }
     }
 }
@@ -171,7 +171,7 @@ export class Chunk {
         return Block.AIR
     }
 
-    generateTerrain() {
+    async generateTerrain() {
         for (let x: number = 0; x < 16; x++) {
             for (let y: number = 0; y < 256; y++) {
                 for (let z: number = 0; z < 16; z++) {
@@ -186,17 +186,17 @@ export class Chunk {
         this.isTerrainGenerated = true
     }
 
-    generateMesh() {
+    async generateMesh() {
         if (!this.isTerrainGenerated) { return }
         for (let scn = 0; scn < this.subchunks.length; scn++) {
             let sc = this.subchunks[scn]
-            sc.generateMesh()
+            await sc.generateMesh()
         }
     }
 
-    destroy(){
+    async destroy(){
         for (let scn = 0; scn < this.subchunks.length; scn++) {
-            this.subchunks[scn].destroy()
+            await this.subchunks[scn].destroy()
         }
         this.subchunks = []
     }
@@ -216,9 +216,14 @@ let chunks: Chunk[]
 let playerPosition: Vector3
 let prevPlayerPosition: Vector3
 
-let renderDistance = 2
+let renderDistance = 6
 
 let noise = new NOISE.Noise(Math.random());
+
+let chunkThread: Worker = new Worker("chunkThread.js");
+
+let isChunkThreadActive: boolean = false
+let shouldChunkThreadRunAgain: boolean = false
 
 function init() {
     container = document.getElementById("container")
@@ -255,8 +260,8 @@ function init() {
 
     chunks = []
 
-    playerPosition = camera.position
-    prevPlayerPosition = camera.position.clone()
+    playerPosition = camera.position.clone().divide(new THREE.Vector3(100, 100, 100))
+    prevPlayerPosition = camera.position.clone().divide(new THREE.Vector3(100, 100, 100))
 
     /*let cMain = new Chunk(0, 0)
     cMain.generateTerrain()
@@ -275,9 +280,20 @@ function onWindowResize() {
 }
 
 function animate() {
-    if(Math.floor(playerPosition.x / 16) != Math.floor(prevPlayerPosition.x / 16) || Math.floor(playerPosition.z / 16) != Math.floor(prevPlayerPosition.z / 16)){
+    console.log(Math.floor(playerPosition.x / 100 / 16) + " " + Math.floor(playerPosition.z / 100 / 16))
+
+    if(!isChunkThreadActive && shouldChunkThreadRunAgain){
         updateChunks()
     }
+
+    if(Math.floor(playerPosition.x / 100 / 16) != Math.floor(prevPlayerPosition.x / 100 / 16) || Math.floor(playerPosition.z / 100 / 16) != Math.floor(prevPlayerPosition.z / 100 / 16)){
+        if(isChunkThreadActive){
+            shouldChunkThreadRunAgain = true
+        }else{
+            updateChunks()
+        }
+    }
+    
     prevPlayerPosition = playerPosition.clone()
 
     requestAnimationFrame(animate);
@@ -290,10 +306,13 @@ function render() {
     renderer.render(scene, camera)
 }
 
-function updateChunks() {
+async function updateChunks() {
+    isChunkThreadActive = true
+    shouldChunkThreadRunAgain = false
+
     // Get the players position
-    let x = Math.floor(playerPosition.x / 16)
-    let z = Math.floor(playerPosition.z / 16)
+    let x = Math.floor(playerPosition.x / 100 / 16)
+    let z = Math.floor(playerPosition.z / 100 / 16)
 
     // Remove all chunks outside the render distance
     let newC = []
@@ -301,7 +320,7 @@ function updateChunks() {
         let c = chunks[i]
         if(c.x > x + renderDistance + 1 || c.x < x - renderDistance - 1 ||
            c.z > z + renderDistance + 1 || c.z < z - renderDistance - 1 ){
-            c.destroy()
+            await c.destroy()
         }else{
             newC.push(c)
         }
@@ -352,22 +371,25 @@ function updateChunks() {
         return valueB - valueA
     })
 
-    console.log(chunksToGenerate.length)
-
     //Generate Chunks
     for(let i=0; i<chunksToGenerate.length; i++){
         let c = chunksToGenerate[i]
-        if(!c.isTerrainGenerated) c.generateTerrain();
-        if(!c.getNeighbour(-1, -1).isTerrainGenerated){ c.getNeighbour(-1, -1).generateTerrain();}
-        if(!c.getNeighbour(0, -1).isTerrainGenerated) { c.getNeighbour(0, -1).generateTerrain();}
-        if(!c.getNeighbour(1, -1).isTerrainGenerated) { c.getNeighbour(1, -1).generateTerrain();}
-        if(!c.getNeighbour(-1, 0).isTerrainGenerated) { c.getNeighbour(-1, 0).generateTerrain();}
-        if(!c.getNeighbour(1, 0).isTerrainGenerated)  { c.getNeighbour(1, 0).generateTerrain();}
-        if(!c.getNeighbour(-1, 1).isTerrainGenerated) { c.getNeighbour(-1, 1).generateTerrain();}
-        if(!c.getNeighbour(0, 1).isTerrainGenerated)  { c.getNeighbour(0, 1).generateTerrain();}
-        if(!c.getNeighbour(1, 1).isTerrainGenerated)  { c.getNeighbour(1, 1).generateTerrain();}
-        c.generateMesh();
+        buildChunk(c)
     }
+    isChunkThreadActive = false
+}
+
+async function buildChunk(c: Chunk){
+    if(!c.isTerrainGenerated) await c.generateTerrain();
+    if(!c.getNeighbour(-1, -1).isTerrainGenerated){ await c.getNeighbour(-1, -1).generateTerrain();}
+    if(!c.getNeighbour(0, -1).isTerrainGenerated) { await c.getNeighbour(0, -1).generateTerrain();}
+    if(!c.getNeighbour(1, -1).isTerrainGenerated) { await c.getNeighbour(1, -1).generateTerrain();}
+    if(!c.getNeighbour(-1, 0).isTerrainGenerated) { await c.getNeighbour(-1, 0).generateTerrain();}
+    if(!c.getNeighbour(1, 0).isTerrainGenerated)  { await c.getNeighbour(1, 0).generateTerrain();}
+    if(!c.getNeighbour(-1, 1).isTerrainGenerated) { await c.getNeighbour(-1, 1).generateTerrain();}
+    if(!c.getNeighbour(0, 1).isTerrainGenerated)  { await c.getNeighbour(0, 1).generateTerrain();}
+    if(!c.getNeighbour(1, 1).isTerrainGenerated)  { await c.getNeighbour(1, 1).generateTerrain();}
+    c.generateMesh();
 }
 
 init()
